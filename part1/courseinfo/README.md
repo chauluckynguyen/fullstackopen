@@ -2,4 +2,4 @@
 
 ## Overview
 
-Implement a web application to display information about a course. 
+Implement a web application to display information about a course.
