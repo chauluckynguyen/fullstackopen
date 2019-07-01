@@ -1,52 +1,153 @@
 import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom'
-import axios from 'axios'
+import personService from './services/persons'
 
 // Components
 import Filter from './Filter'
 import PersonForm from './PersonForm'
 import Persons from './Persons'
+import Notification from './Notification'
 
 const App = () => {
-    const [persons, setPersons] = useState([])
-
-    const [filterValue, setFilterValue] = useState('')
-    
-    const [ values, setValues ] = useState({
+    const [ persons, setPersons ] = useState([])
+    const [ filterValue, setFilterValue ] = useState('')
+    const [ status, setStatus ] = useState({
+        message: null, 
+        type: null
+    })    
+    const [ value, setValue ] = useState({
         name: '', 
         number: ''
     })
 
     useEffect(() => {
-        console.log("effect")
-        axios
-            .get('http://localhost:3001/persons')
-            .then(response => {
-                console.log("promise fulfilled!")
-                setPersons(response.data)
+        personService
+            .getAll()
+            .then(initialPersons => {
+                setPersons(initialPersons)
             })
+            .catch(error => {
+                const errorMessage = {
+                    message: error.response.data.message,
+                    type: 'error'
+                }
+                setStatus(errorMessage)
+                setTimeout(() => {
+                    setStatus(null)
+                }, 5000)
+                console.log(error.response)
+            })
+
     }, [])
-    console.log('render', persons.length, 'persons')
 
     const handleChange = (e) => {
-        setValues({
-            ...values, 
+        setValue({
+            ...value, 
             [e.target.name]: e.target.value
         })
     }
 
+    const handleDeleteButton = (id) => {
+        const person = persons.find(person => person.id === id)
+        
+        if (window.confirm(`Delete ${person.name}?`)) {
+            personService
+            .deletePerson(id)
+            .then(response => {
+                setPersons(persons.filter(person => person.id !== id))                
+            })
+            .catch(error => {
+                const errorMessage = {
+                    message: `${person.name} has already been removed from server`,
+                    type: 'error'
+                }
+                setStatus(errorMessage)
+                setTimeout(() => {
+                    setStatus({
+                        ...status, 
+                        message: null
+                    })
+                }, 5000)
+                setPersons(persons.filter(person => person.id !== id))                
+            })
+        }
+    }
+
     const handleFormSubmission = (e) => {
         e.preventDefault() 
-        const newPerson = {
-            name: values.name,
-            number: values.number
+        const personObject = {
+            name: value.name,
+            number: value.number
         }
-        if(persons.some(person => person.name.toLowerCase() === values.name.toLowerCase())) {
-            alert(`${values.name} is already added to phonebook`)            
+        if(persons.some(person => person.name.toLowerCase() === value.name.toLowerCase())) {
+            const id = persons.find(p => p.name === value.name).id
+            if (window.confirm(`${value.name} is already added to phonebook, replace the old number with a new one?`)) {
+                personService
+                    .update(id, personObject)
+                    .then(newPerson => {
+                        const newPersons = persons.map(person => person.id !== id ? person : newPerson)
+                        const notificationMessage = {
+                            message: `${value.name} has been updated`, 
+                            type: 'confirm'
+                        }
+                        setStatus(notificationMessage)
+                        setTimeout(() => {
+                            setStatus({
+                                ...status, 
+                                message: null
+                            })
+                          }, 5000)
+                        setPersons(newPersons)
+                    })
+                    .catch(error => {
+                        const validPersons = persons.filter(person => person.id !== id)
+                        const errorMessage = {
+                            message: `${value.name} has already been removed from server`,
+                            type: 'error'
+                        }
+                        setStatus(errorMessage)
+                        setTimeout(() => {
+                            setStatus({
+                                ...status, 
+                                message: null
+                            })
+                        }, 5000)
+                        setPersons(validPersons)
+                    })
+            }            
         } else {
-            setPersons(persons.concat(newPerson))            
+            personService
+                .create(personObject)
+                .then(returnedPerson => {
+                    const notificationMessage = { 
+                        message: `Added ${value.name}`,
+                        type: 'confirm'
+                    }
+                    setStatus(notificationMessage)
+                    setTimeout(() => {
+                        setStatus({
+                            ...status, 
+                            message: null
+                        })
+                    }, 5000)
+                    setPersons(persons.concat(returnedPerson))
+                })
+                .catch(error => {
+                    const errorMessage = {
+                        message: error.response.data.message,
+                        type: 'error'
+                    }
+                    setStatus(errorMessage)
+                    setTimeout(() => {
+                        setStatus({
+                            ...status, 
+                            message: null
+                        })
+                    }, 5000)
+                    console.log(error.response)
+                })
         }
-        setValues({
+        setValue({
             name: '', 
             number: ''
         })
@@ -57,6 +158,7 @@ const App = () => {
     return (
         <div>
             <h2>Phonebook</h2>
+            <Notification status={status} />
             <Filter 
                 value={filterValue} 
                 onChange={e => setFilterValue(e.target.value)} 
@@ -64,12 +166,12 @@ const App = () => {
             <h3>add a new</h3>
             <PersonForm 
                 onSubmit={handleFormSubmission} 
-                nameValue={values.name} 
-                numValue={values.number} 
+                nameValue={value.name} 
+                numValue={value.number} 
                 onChange={handleChange} 
             />
             <h3>Numbers</h3>
-            <Persons persons={personsFiltered} />
+            <Persons persons={personsFiltered} handleDeleteButton={handleDeleteButton} />
         </div>
     )
 }
